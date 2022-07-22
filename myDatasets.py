@@ -18,9 +18,9 @@ class IEMOCAPAudioDatasetsRaw(RawAudioDataset):
         video_path = "/home/projects/12001458/chengqi/huggingface/mydatasets/iemocap_original/IEMOCAP/{session_id}/sentences/wav/{video}/{segment}.wav",
         split="train", 
         valid_session=5,
-        max_sample_size=16000, 
+        max_sample_size=320000, 
         min_sample_size=5000, 
-        max_tokens=1500000,
+        max_tokens=5770000,
         sample_rate=16000, 
         shuffle=True, 
         pad=True, 
@@ -131,7 +131,7 @@ class IEMOCAPAudioDatasetsRaw(RawAudioDataset):
             return {
                 "feats": self.data_processor([feats.numpy() for sample in samples for feats in sample["source"]], padding=self.pad, sampling_rate=self.sample_rate, return_tensors="pt"),
                 "dialog_lengths":  torch.tensor([sample["dialog_lengths"] for sample in samples]),
-                "labels": torch.tensor([label for sample in samples for label in sample["label_gts"]]),
+                "label": torch.tensor([label for sample in samples for label in sample["label_gts"]]),
             }
 
 
@@ -156,13 +156,15 @@ class IEMOCAPDataset(Dataset):
 
         self.len = len(self.keys)
 
+    def batch_sampler(self):
+        return None
     def __getitem__(self, index):
         dialog_id = self.keys[index]
         feats = torch.FloatTensor(self.features[dialog_id])
         dialog_length = len(self.labels[dialog_id])
         label = torch.LongTensor(self.labels[dialog_id])
         return feats, dialog_length, label
-
+    
     def __len__(self):
         return self.len
     def collate_fn(self, data):

@@ -18,7 +18,8 @@ from torch.optim.rmsprop import RMSprop
 from torch.utils.data import DataLoader
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
 from units import plot_confusion_matrix, parse_args
-
+from sklearn.manifold import TSNE
+tsne = TSNE(n_components=2)
 from myDatasets import *
 from model import *
 from pytorch_lightning import Trainer, seed_everything
@@ -37,13 +38,13 @@ class Experiment(LightningModule, ABC):
 
     def prepare_data(self):
         if self.cfg.model.pretrain_model == None:
-            IEMOCAPDataset = IEMOCAPDataset
+            IEMOCAPDataset1 = IEMOCAPDataset
         else:
-            IEMOCAPDataset = IEMOCAPAudioDatasetsRaw
+            IEMOCAPDataset1 = IEMOCAPAudioDatasetsRaw
 
-        self.train_dataset = IEMOCAPDataset(split = "train", **self.cfg.dataset)
-        self.val_dataset = IEMOCAPDataset(split = "valid", **self.cfg.dataset)
-        self.test_dataset = IEMOCAPDataset(split = "test", **self.cfg.dataset)
+        self.train_dataset = IEMOCAPDataset1(split = "train", **self.cfg.dataset)
+        self.val_dataset = IEMOCAPDataset1(split = "valid", **self.cfg.dataset)
+        self.test_dataset = IEMOCAPDataset1(split = "valid", **self.cfg.dataset)
 
     def configure_optimizers(self):
         lr = self.cfg.optimizer.learning_rate
@@ -80,19 +81,22 @@ class Experiment(LightningModule, ABC):
 
         return DataLoader(self.train_dataset,
                           batch_size=self.cfg.data_loader.batch_size,
+                          batch_sampler=self.train_dataset.batch_sampler(),
                           collate_fn=self.train_dataset.collate_fn,
                           num_workers=self.cfg.data_loader.num_workers)
 
     def val_dataloader(self):
         return DataLoader(self.val_dataset,
                           batch_size=self.cfg.data_loader.batch_size,
+                          batch_sampler=self.val_dataset.batch_sampler(),
                            collate_fn=self.val_dataset.collate_fn,
                           num_workers=self.cfg.data_loader.num_workers)
 
     def test_dataloader(self):
         return DataLoader(self.test_dataset,
                           batch_size=self.cfg.data_loader.batch_size,
-                          collate_fn=self.val_dataset.collate_fn,
+                          collate_fn=self.test_dataset.collate_fn,
+                          batch_sampler=self.test_dataset.batch_sampler(),
                           num_workers=self.cfg.data_loader.num_workers)
 
     def get_lr(self, optimizer):
@@ -170,14 +174,45 @@ class Experiment(LightningModule, ABC):
         # return {'val_loss': val_loss, 'log': log}
 
     def test_step(self, batch, batch_idx):
-        loss =0
-        accuracy=0
-        return {'test_loss': loss, 'accuracy': accuracy}
+        batch.update(save_log=True)
+        out, res = self(batch)
+        labels = batch["label"]
+        loss = self.model.loss(
+            out,
+            labels
+        )
+        log = self.model.merits(out, labels)
+        log["out"] = out
+        log["labels"] = labels
+        log["loss"] = loss
+        log["res"] = res
+        return log
+
     def test_epoch_end(self, outputs):
-        avg_loss = torch.stack([x['test_loss'] for x in outputs]).mean()
-        avg_acc = torch.stack([x['accuracy'] for x in outputs]).mean()
-        log = {'test_loss': avg_loss, 'test_accuracy': avg_acc}
-        return {'test_loss': avg_loss, 'log': log}
+        aggra_out = torch.cat([x["out"] for x in outputs])
+        aggra_labels = torch.cat([x["labels"] for x in outputs])
+        val_loss = self.model.loss(aggra_out, aggra_labels)
+        log = self.model.merits(aggra_out, aggra_labels)
+        c_m = confusion_matrix(aggra_labels.data.cpu().numpy(), aggra_out.data.cpu().argmax(-1).numpy())
+        if self.cfg.model.n_classes == 4:
+            classes = ["N", "A", "S", "H"]
+        else:
+            classes = ["hap", "sad", "neu", "ang", "exc", "fru"]
+        fig = plot_confusion_matrix(c_m, normalize= True, classes=classes)
+
+        self.logger.experiment.add_figure("conf/test_nor", fig, self.current_epoch)
+        
+        # self.log_dict()
+        res = outputs[0]["res"]
+        for k,v in res.items():
+        
+            fig = plt.figure()
+            x_tsne = tsne.fit_transform(v)
+            test_label_str = [["N", "A", "S", "H"][i] for i in aggra_labels.tolist()]
+            sns.scatterplot(x=x_tsne[:,0],y=x_tsne[:,1],hue=test_label_str)
+            self.logger.experiment.add_figure("tsne/%s"%k, fig, self.current_epoch)
+        self.log("test_loss", float(val_loss), on_epoch=True, on_step =False)
+        self.log("test_accuracy", float(log["accuracy"]), on_epoch=True, on_step =False)
 def train(cfg):
     
     experiment = Experiment(cfg)
@@ -185,6 +220,7 @@ def train(cfg):
     earlystop_callback = EarlyStopping(**cfg.earlystop)
     trainer = Trainer(**cfg.trainer, callbacks=[checkpoint_callback, earlystop_callback])
     trainer.fit(experiment)
+    # trainer.test(experiment,ckpt_path=cfg.trainer.resume_from_checkpoint)
 if __name__=="__main__":
     config_path = "config.yaml"
     cfg = OmegaConf.load(config_path)

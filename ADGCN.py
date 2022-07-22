@@ -54,7 +54,6 @@ class GraphConvolution(nn.Module):
 
     def forward(self, input, adj , h0 , lamda, alpha, l):
         theta = math.log(lamda/l+1)
-        
         hi = torch.spmm(adj, input)
         # print(alpha)
         if self.variant:
@@ -109,6 +108,8 @@ class ADGCNForDialog(nn.Module):
             layer_inner = F.dropout(layer_inner, self.dropout, training=self.training)
             alpha = torch.sigmoid(self.q(layer_inner)-1)
             layer_inner = self.act_fn(con(layer_inner,adj,_layers[0],self.lamda, alpha, i+1))
+        if save_log: 
+            log.update({"ADGCNLayer%d"%(i+1):layer_inner})
         layer_inner = F.dropout(layer_inner, self.dropout, training=self.training)
         out = self.classfier(layer_inner)
         return out, log

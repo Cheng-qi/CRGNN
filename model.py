@@ -177,7 +177,7 @@ class DialogModel(nn.Module):
             to_future_link=self.to_future_link, 
             to_past_link=self.to_past_link, 
             device = feats.device)
-        x, log = self.class_model(feats, graph_adj)
+        x, log = self.class_model(feats, graph_adj, **data)
         res.update(log)
         return x, res
     
