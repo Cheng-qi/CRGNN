@@ -4,3 +4,5 @@ datasets/
 features/
 features
 lightning_logs/
+config.yaml
+.vscode/
