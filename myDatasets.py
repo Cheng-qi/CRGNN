@@ -15,7 +15,7 @@ class IEMOCAPAudioDatasetsRaw(RawAudioDataset):
     def __init__(
         self, 
         data_path,
-        video_path = "/home/projects/12001458/chengqi/huggingface/mydatasets/iemocap_original/IEMOCAP/{session_id}/sentences/wav/{video}/{segment}.wav",
+        raw_path = "/home/projects/12001458/chengqi/huggingface/mydatasets/iemocap_original/IEMOCAP/{session_id}/sentences/wav/{video}/{segment}.wav",
         split="train", 
         valid_session=5,
         max_sample_size=320000, 
@@ -44,7 +44,7 @@ class IEMOCAPAudioDatasetsRaw(RawAudioDataset):
         self.normalize = normalize
         self.sample_rate = sample_rate
 
-        self.video_path = video_path
+        self.raw_path = raw_path
 
                 # data process
         with torch.no_grad():
@@ -82,7 +82,7 @@ class IEMOCAPAudioDatasetsRaw(RawAudioDataset):
             self.label_gts[dialog].append(["N", "A", "S", "H"].index(label))
             # self.label_gts[dialog].append(label)
             # IEMOCAP/{session_id}/sestences/avi/{video}/{segment}.avi"
-            fname = self.video_path.format(session_id=session,video=video, segment=segment)
+            fname = self.raw_path.format(session_id=session,video=video, segment=segment)
             self.fnames[dialog].append(fname)
             dialog_size += max(min(wav_num, self.max_sample_size), self.min_sample_size)
 
