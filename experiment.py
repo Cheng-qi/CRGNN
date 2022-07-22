@@ -49,7 +49,8 @@ class Experiment(LightningModule, ABC):
     def configure_optimizers(self):
         lr = self.cfg.optimizer.learning_rate
         weight_decay = self.cfg.optimizer.weight_decay
-        eps = 1e-2 / float(self.cfg.data_loader.batch_size) ** 2
+        # eps = 1e-2 / float(self.cfg.data_loader.batch_size) ** 2
+        eps = 1e-8
         if self.cfg.optimizer.type.lower() == "rmsprop":
             optimizer = RMSprop(self.parameters(),
                                 lr=lr,
@@ -59,12 +60,12 @@ class Experiment(LightningModule, ABC):
         elif self.cfg.optimizer.type.lower() == "adam":
             optimizer = Adam(self.parameters(),
                              lr=lr,
-                            #  eps=eps,
+                             eps=eps,
                              weight_decay=weight_decay)
         elif self.cfg.optimizer.type.lower() == "adamax":
             optimizer = Adamax(self.parameters(),
                              lr=lr,
-                            #  eps=eps,
+                             eps=eps,
                              weight_decay=weight_decay)
         else:
             raise ValueError("Unknown optimizer type.")
