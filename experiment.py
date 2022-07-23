@@ -27,7 +27,7 @@ from pytorch_lightning import Trainer, seed_everything
 class Experiment(LightningModule, ABC):
     def __init__(self, cfg):
         super().__init__()
-        # self.hparams = OmegaConf.to_container(cfg, resolve=True)
+        self.hparams.update(OmegaConf.to_container(cfg, resolve=True))
         self.cfg = cfg
         cfg.dataset.update(pretrain_model=cfg.model.pretrain_model)
         self.model = DialogModel(**cfg.model)
@@ -88,8 +88,9 @@ class Experiment(LightningModule, ABC):
 
     def val_dataloader(self):
         return DataLoader(self.val_dataset,
-                          batch_size=self.cfg.data_loader.batch_size,
+                          
                           batch_sampler=self.val_dataset.batch_sampler(),
+                            batch_size=self.cfg.data_loader.batch_size,
                            collate_fn=self.val_dataset.collate_fn,
                           num_workers=self.cfg.data_loader.num_workers)
 
