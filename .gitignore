@@ -4,5 +4,7 @@ datasets/
 features/
 features
 lightning_logs/
-config.yaml
+# config.yaml
 .vscode/
+/data
+best_results/

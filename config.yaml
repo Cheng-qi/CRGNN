@@ -1,0 +1,44 @@
+exp_mode: train
+show_tsne: false
+checkpoints:
+  filename: '{epoch}-{val_loss:.5f}-{val_accuracy:.5f}'
+  monitor: val_accuracy
+  save_last: true
+  save_on_train_epoch_end: false
+  save_top_k: 10
+  mode: max
+data_loader:
+  batch_size: 4
+  num_workers: 0
+dataset:
+  # name: IEMOCAP5531CrossValWithoutFinetune
+  # name: IEMOCAP5531CrossValRaw
+  # name: IEMOCAP5531CrossValWithFrameIntra
+  name: IEMOCAP5531CrossValWithFrame
+earlystop:
+  monitor: val_accuracy
+  check_on_train_epoch_end: false
+  patience: 50
+  mode: max
+lr_scheduler:
+  active: false
+  decay_rate: 0.5
+model:
+  # name: CausalContextModel
+  # name: CausalDiaModel
+  name: DiaModel
+  # name: IntraModel
+  # name: MLPModel
+
+optimizer:
+  learning_rate: 0.0001
+  type: Adam
+  weight_decay: 0.0000
+seed: 100
+trainer:
+  gpus: [0]
+  # - 2
+  log_every_n_steps: 1
+  max_epochs: 500
+  # gradient_clip_val: 0.8
+  # resume_from_checkpoint: /home/projects/12001458/chengqi/GafForEmr/lightning_logs/version_68/checkpoints/last.ckpt

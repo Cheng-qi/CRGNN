@@ -72,26 +72,28 @@ class GraphConvolution(nn.Module):
 
 class ADGCNForDialog(nn.Module):
     def __init__(self, 
-                input_size, nhidden,  
-                nlayers, 
+                input_size, 
+                hidden_size,  
+                layers, 
                 dropout, 
                 lamda, 
-                n_classes=4,  
-                variant=False):
+                out_size,  
+                variant=False,
+                **kwards):
         super(ADGCNForDialog, self).__init__()
-        if input_size != nhidden:
-            self.project = nn.Linear(input_size, nhidden)
+        if input_size != hidden_size:
+            self.project = nn.Linear(input_size, hidden_size)
         else:
             self.project = None
         self.convs = nn.ModuleList()
-        for _ in range(nlayers):
-            self.convs.append(GraphConvolution(nhidden, nhidden,variant=variant))
+        for _ in range(layers):
+            self.convs.append(GraphConvolution(hidden_size, hidden_size,variant=variant))
         self.act_fn = nn.ReLU()
-        self.q = nn.Linear(nhidden, 1, bias = True)
+        self.q = nn.Linear(hidden_size, 1, bias = True)
         self.dropout = dropout
         # self.alpha = alpha
         self.lamda = lamda
-        self.classfier = nn.Linear(nhidden, n_classes)
+        self.classfier = nn.Linear(hidden_size, out_size)
 
     def forward(self, x, adj, save_log=False, **kwards):
         log = {}
@@ -110,6 +112,6 @@ class ADGCNForDialog(nn.Module):
             layer_inner = self.act_fn(con(layer_inner,adj,_layers[0],self.lamda, alpha, i+1))
         if save_log: 
             log.update({"ADGCNLayer%d"%(i+1):layer_inner})
-        layer_inner = F.dropout(layer_inner, self.dropout, training=self.training)
+        layer_inner = F.dropout(layer_inner+x, self.dropout, training=self.training)
         out = self.classfier(layer_inner)
         return out, log

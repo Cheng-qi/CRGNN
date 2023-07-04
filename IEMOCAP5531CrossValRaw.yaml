@@ -1,0 +1,9 @@
+dataset:
+  data_path: data/iemocap_vad/IEMOCAP_4_5531.csv
+  raw_path: /data/ADGCNForEMC/data/iemocap_vad/vaddata/session{session_id}/{segment2}.wav
+  cross_val: 5
+  max_tokens: 5770000
+  classes_name: ['N', 'A', 'S', 'H']
+model:
+  uttr_input_dim: 512
+  classes_name: ['N', 'A', 'S', 'H']

@@ -1,0 +1,37 @@
+model:
+  adapter:
+    projector_dim: 256
+    select: DeepModel # 可选: UtteranceLevel 和 DeepModel
+
+    UtteranceLevel:
+      pooling: MeanPooling
+
+    DeepModel:
+      model_type: CNNSelfAttention
+      hidden_dim: 128
+      kernel_size: 5
+      padding: 2
+      pooling: 5
+      dropout: 0.4
+    output_dim: 128
+  causalGNN:
+    name: CausalGCN
+    gfn: false
+    dropout: 0.2
+    edge_norm: false
+    context_before: 4
+    context_after: 4
+    args:
+      with_keypoints: false
+      use_residual: false
+      layers: 3
+      hidden: 256
+      with_random: true
+      eval_random: false
+      without_node_attention: false
+      without_edge_attention: false
+      fc_num: 222
+      cat_or_add: cat
+      c: 0.5
+      o: 1.0
+      co: 0.5

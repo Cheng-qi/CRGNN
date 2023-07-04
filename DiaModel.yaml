@@ -1,0 +1,27 @@
+model:
+  adapter:
+    projector_dim: 512
+    select: DeepModel # 可选: UtteranceLevel 和 DeepModel
+
+    UtteranceLevel:
+      pooling: MeanPooling
+
+    DeepModel:
+      model_type: CNNSelfAttention
+      hidden_dim: 256
+      kernel_size: 5
+      padding: 2
+      pooling: 5
+      dropout: 0.5
+    output_dim: 256
+  dialogModel:
+    name: GCNIIForDialog # ADGCNForDialog, GATForDialog, GCNForDialog, GCNIIForDialog, MLPForDialog
+    to_future_link: 10
+    to_past_link: 10
+    hidden_size: 256
+    layers: 10
+    dropout: 0.5
+    head_num: 3 # only GATForDialog
+    alpha: 0.1 # only GCNIIForDialog 
+    theta: 0.5 # only GCNIIForDialog
+
