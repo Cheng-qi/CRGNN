@@ -11,6 +11,7 @@ from fairseq.data.audio.raw_audio_dataset import RawAudioDataset
 import numpy as np
 import soundfile as sf
 from units import *
+import random
 class IEMOCAP5531CrossValRaw(RawAudioDataset):
     def __init__(
         self, 
@@ -221,24 +222,33 @@ class IEMOCAP5531CrossVal(Dataset):
             } # feats, dialog_length, label
 
 class IEMOCAP5531CrossValWithFrame(IEMOCAP5531CrossVal):
+    data = None
     def __init__(self, 
                  split="train", 
                  cross_val=5, 
                  max_sentences = 120,
-                 data_path = '',
+                 data_path = 'data/myIemocap_4_5531/audio.pkl',
+                 random_valid = None,
                  **kwards):
         feature_path = data_path
-        data = pickle.load(open(feature_path, 'rb'), encoding='latin1')
+        data = IEMOCAP5531CrossValWithFrame.data if IEMOCAP5531CrossValWithFrame.data!=None else pickle.load(open(feature_path, 'rb'), encoding='latin1')
+        IEMOCAP5531CrossValWithFrame.data = data
         print("load feature from %s"%feature_path)
         self.max_sentences = max_sentences
-        self.features, self.labels =  data["features"], data["labels"]
+        self.features, self.labels, self.speakers =  data["features"], data["labels"], data["speakers"]
         self.session_ids = data["session_ids"]
         cross_keys=[]
         if split == "train":
             for i in list(range(1,cross_val))+list(range(cross_val+1,6)):
                 cross_keys = cross_keys+self.session_ids["Session%d"%i]
         else:
-            cross_keys = self.session_ids["Session%d"%cross_val]  
+            cross_keys = self.session_ids["Session%d"%cross_val] 
+        if split == "train" and random_valid !=None:
+            random.seed(0)
+            random.shuffle(cross_keys) 
+            train_len = int(len(cross_keys)*(1-random_valid)) 
+            IEMOCAP5531CrossValWithFrame.data["valid"] = cross_keys[train_len:]
+            cross_keys = cross_keys[:train_len]
         self.keys = data.get(split, cross_keys)
         self.sizes =  np.array([len(self.labels[id]) for id in self.keys], dtype=np.int64)
         self.len = len(self.keys)
@@ -250,23 +260,27 @@ class IEMOCAP5531CrossValWithFrame(IEMOCAP5531CrossVal):
         feats = [torch.from_numpy(feat_i).permute(1,0) for feat_i in self.features[dialog_id]]
         feats_length = [feat_i.shape[1] for feat_i in self.features[dialog_id]]
         dialog_length = len(self.labels[dialog_id])
-        label = torch.LongTensor(self.labels[dialog_id])
-        return feats, feats_length, dialog_length, label
+        speakers = [int(speaker) for speaker in self.speakers[dialog_id]]
+        label = self.labels[dialog_id]
+        return feats, feats_length, dialog_length, speakers, label
     
     def collate_fn(self, data):
         feats = []
         frames_lengths = []
         dialog_lengths = []
+        speakers = []
         labels = []
         for data_i in data:
             feats.extend(data_i[0])
             frames_lengths.extend(data_i[1])
             dialog_lengths.append(data_i[2])
-            labels.extend(data_i[3])
+            speakers.extend(data_i[3])
+            labels.extend(data_i[4])
         return {"frames_inputs": pad_sequence(feats, True), 
                 "frames_lengths":torch.LongTensor(frames_lengths), 
                 "dialog_lengths":torch.LongTensor(dialog_lengths), 
-                "labels":torch.LongTensor(labels)} # feats, dialog_length, label
+                "speakers":torch.FloatTensor(speakers), 
+                "labels":torch.LongTensor(labels)} 
   
 class IEMOCAP5531CrossValWithFrameIntra(Dataset):
     def __init__(self, 
@@ -320,7 +334,7 @@ if __name__ == "__main__":
     # dataset = IEMOCAPAudioDatasetsRaw("/home/users/ntu/n2107167/lnespnet/chengqi/ADGCNForEMC/datasets/iemocap_original/audio/IEMOCAP_Audio_4.csv",split="test")
     
     
-    dataset = IEMOCAP5531CrossValWithFrameIntra("train")
+    dataset = IEMOCAP5531CrossValWithFrame("train", data_path="data/featuresFromPretrain/wavlm_large_finetune_fold5_with_val_s3prl_full_mean_hidden.pkl")
     dataloader = DataLoader(dataset,
                             batch_size=120,
                             collate_fn=dataset.collate_fn,

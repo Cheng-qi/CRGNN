@@ -166,7 +166,8 @@ class ADGCNForDialog(nn.Module):
             self.project = None
         self.convs = nn.ModuleList()
         for _ in range(layers):
-            self.convs.append(GraphConvolution(hidden_size, hidden_size,variant=variant))
+            self.convs.append(GraphConvolution(hidden_size, hidden_size, variant=variant))
+        self.layernorm = nn.LayerNorm(hidden_size)
         self.act_fn = nn.ReLU()
         self.q = nn.Linear(hidden_size, 1, bias = True)
         self.dropout = dropout
@@ -180,7 +181,7 @@ class ADGCNForDialog(nn.Module):
         _layers = []
         # x = F.dropout(x, self.dropout, training=self.training)
         if self.project != None:
-            x = self.project(x)
+            x = self.layernorm(self.project(x))
         layer_inner = x
         _layers.append(layer_inner)
         for i, con in enumerate(self.convs):
@@ -189,8 +190,10 @@ class ADGCNForDialog(nn.Module):
             layer_inner = F.dropout(layer_inner, self.dropout, training=self.training)
             alpha = torch.sigmoid(self.q(layer_inner)-1)
             layer_inner = self.act_fn(con(layer_inner,adj,_layers[0],self.lamda, alpha, i+1))
+            layer_inner = self.layernorm(layer_inner)
         if save_log: 
             log.update({"ADGCNLayer%d"%(i+1):layer_inner})
-        layer_inner = F.dropout(layer_inner, self.dropout, training=self.training)
+        
+        # layer_inner = F.dropout(layer_inner, self.dropout, training=self.training)
         out = self.classfier(layer_inner)
         return out, log

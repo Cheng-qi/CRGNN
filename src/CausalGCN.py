@@ -89,14 +89,19 @@ class CausalGCN(torch.nn.Module):
                 torch.nn.init.constant_(m.weight, 1)
                 torch.nn.init.constant_(m.bias, 0.0001)
 
-    def forward(self, x, edge_index, batch, keypoints, eval_random=True):
+    def forward(self, x, edge_index, batch, keypoints = None, eval_random=True):
         
     # def forward(self, data, eval_random=True):
 
         # x = data.x if data.x is not None else data.feat
         # edge_index, batch = data.edge_index, data.batch
         row, col = edge_index
-        keypoints_feats = x[keypoints]
+        if keypoints != None:
+            keypoints_feats = x[keypoints]
+        else:
+            assert self.args.with_keypoints == False
+            assert self.args.use_residual == False            
+
         # return 0,self.residual_rc(keypoints_feats),0
         x = self.bn_feat(x)
         x = F.relu(self.conv_feat(x, edge_index))

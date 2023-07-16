@@ -1,12 +1,10 @@
 model:
-  freeze_epoch: 1000000
+  residual: false
   adapter:
     projector_dim: 256
     select: DeepModel # 可选: UtteranceLevel 和 DeepModel
-
     UtteranceLevel:
       pooling: MeanPooling
-
     DeepModel:
       model_type: CNNSelfAttention
       hidden_dim: 128
@@ -24,7 +22,7 @@ model:
     context_after: 4
     args:
       with_keypoints: true
-      use_residual: true
+      use_residual: false
       layers: 2
       hidden: 256
       with_random: true

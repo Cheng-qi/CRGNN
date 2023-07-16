@@ -1,8 +1,10 @@
 dataset:
   # data_path: data/featuresFromPretrain/audio_wave2vec2_768.pkl
-  data_path: data/featuresFromPretrain/wavlm_large_finetune_fold5_with_val_s3prl_full_mean_hidden.pkl
-  cross_val: 5
+  data_path: data/featuresFromPretrain/wavlm_large_finetune_fold4_with_val_s3prl_full_mean_hidden.pkl
+  # data_path: data/featuresFromPretrain/wavlm_large_s3prl_full_mean_hidden.pkl
+  cross_val: 4
   max_sentences: 120
+  # random_valid: 0.2
 model:
   uttr_input_dim: 1024
   classes_name: ['N', 'A', 'S', 'H']

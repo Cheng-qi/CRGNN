@@ -7,9 +7,10 @@ from abc import ABC
 import seaborn as sns
 import matplotlib.pyplot as plt
 from sklearn.metrics import f1_score, confusion_matrix, accuracy_score, classification_report, precision_recall_fscore_support
-
 import sys 
 import torch
+from torch.utils.data import  random_split
+
 from omegaconf import DictConfig, OmegaConf
 from pytorch_lightning import LightningModule
 from torch.optim import Adamax, Adadelta, Adam, RMSprop
@@ -50,7 +51,7 @@ class Experiment(LightningModule, ABC):
 
 
     def forward(self, data):
-        return self.model(**data)
+        return self.model(epoch= self.current_epoch,**data)
     def on_train_start(self):
         self.my_logger = logging.getLogger()
         # self.my_logger = logging.getLogger(self.trainer.logger.log_dir+"/mylog.txt")
@@ -172,7 +173,7 @@ class Experiment(LightningModule, ABC):
             log["out"] = out[0] 
             log["out1"] = out[1] 
             log["out2"] = out[2] 
-            # log["out3"] = out[3] 
+            log["out3"] = out[3] 
         else:
             log["out"] = out
 
@@ -186,8 +187,8 @@ class Experiment(LightningModule, ABC):
     def validation_epoch_end(self, outputs):
         aggra_out = torch.cat([x["out"] for x in outputs])
         if( "out1" in outputs[0]):
-            aggra_out_c = torch.cat([x["out1"] for x in outputs])
-            aggra_out_co = torch.cat([x["out2"] for x in outputs])
+            aggra_out_c = torch.cat([x["out2"] for x in outputs])
+            aggra_out_co = torch.cat([x["out3"] for x in outputs])
 
             
         aggra_labels = torch.cat([x["labels"] for x in outputs])

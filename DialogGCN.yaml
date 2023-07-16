@@ -1,0 +1,35 @@
+model:
+  adapter: 
+    projector_dim: 512
+    select: DeepModel # 可选: UtteranceLevel 和 DeepModel
+
+    UtteranceLevel:
+      pooling: MeanPooling
+
+    DeepModel:
+      model_type: CNNSelfAttention
+      hidden_dim: 256
+      kernel_size: 5
+      padding: 2
+      pooling: 5
+      dropout: 0.5
+    output_dim: 256
+  dialogModel:
+    base_model: LSTM
+    D_m: null    # input_size
+    D_g: 150    # only dialogRnn
+    D_p: 150    # only dialogRnn
+    D_e: 256    # hidden_size
+    D_h: null   # unused
+    D_a: null   # unused
+    graph_hidden_size: 100 
+    n_speakers: 2
+    max_seq_len: 110 
+    window_past: 10
+    window_future: 10
+
+    dropout_rec: 0.5 # only dialogRnn
+    dropout: 0.5
+    nodal_attention: True
+    avec: False
+
