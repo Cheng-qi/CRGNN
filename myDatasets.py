@@ -139,8 +139,8 @@ class IEMOCAP5531CrossValRaw(RawAudioDataset):
                 batch_i.append(index_i)
         batches.append(np.array(batch_i))
         return batches
-    def batch_sampler(self):
-        return MyBatchSampler(self.batch_by_size(self.sizes.argsort(), max_tokens=self.max_tokens))
+    # def batch_sampler(self):
+    #     return MyBatchSampler(self.batch_by_size(self.sizes.argsort(), max_tokens=self.max_tokens))
     def collate_fn(self, samples):
         with torch.no_grad():
             return {
@@ -181,9 +181,9 @@ class IEMOCAP5531CrossVal(Dataset):
         self.len = len(self.keys)
         print(f"loaded {split} dataset: num={self.len}")
 
-    def batch_sampler(self):
-        assert self.sizes.max() <= self.max_sentences
-        return MyBatchSampler(self.batch_by_size(self.sizes.argsort(), max_sentences=self.max_sentences))
+    # def batch_sampler(self):
+    #     assert self.sizes.max() <= self.max_sentences
+    #     return MyBatchSampler(self.batch_by_size(self.sizes.argsort(), max_sentences=self.max_sentences))
     def batch_by_size(self, indices, max_sentences=None):
         batches = []
         batch_i = []
@@ -274,22 +274,79 @@ class IEMOCAP5531CrossValWithFrame(IEMOCAP5531CrossVal):
             feats.extend(data_i[0])
             frames_lengths.extend(data_i[1])
             dialog_lengths.append(data_i[2])
-            speakers.extend(data_i[3])
+            speakers.append(data_i[3])
             labels.extend(data_i[4])
         return {"frames_inputs": pad_sequence(feats, True), 
                 "frames_lengths":torch.LongTensor(frames_lengths), 
                 "dialog_lengths":torch.LongTensor(dialog_lengths), 
-                "speakers":torch.FloatTensor(speakers), 
+                "speakers":speakers, 
+                "labels":torch.LongTensor(labels)} 
+    
+class MELD(Dataset):
+    data = None
+    def __init__(self, 
+                 split="train", 
+                 max_sentences = 120,
+                 data_path = 'data/newFeatures/meld/audio.pkl',
+                 **kwards):
+        feature_path = data_path
+        data = MELD.data if MELD.data!=None else pickle.load(open(feature_path, 'rb'), encoding='latin1')
+        MELD.data = data
+        print("load feature from %s"%feature_path)
+
+
+        self.max_sentences = max_sentences
+        self.features, self.labels, self.speakers =  data["features"], data["labels"], data["speakers"]
+        self.keys = data.get(split)
+        self.sizes =  np.array([len(self.labels[id]) for id in self.keys], dtype=np.int64)
+        self.len = len(self.keys)
+        # labelsNum = [sum([dataset.data["labels"][key].count(i) for key in dataset.data[split]]) for i in range(7)]
+
+        print(f"loaded {split} dataset: sentences={self.sizes.sum()}, dialog={self.len}")
+    def __len__(self):
+        return self.len
+    def __getitem__(self, index):
+        dialog_id = self.keys[index]
+        # feats = torch.FloatTensor( np.stack([feat_i for feat_i in self.features[dialog_id]]))
+        feats = [torch.from_numpy(feat_i).permute(1,0) for feat_i in self.features[dialog_id]]
+        feats_length = [feat_i.shape[1] for feat_i in self.features[dialog_id]]
+        dialog_length = len(self.labels[dialog_id])
+        speakers = [int(speaker) for speaker in self.speakers[dialog_id]]
+        label = self.labels[dialog_id]
+        return feats, feats_length, dialog_length, speakers, label
+    
+    def collate_fn(self, data):
+        feats = []
+        frames_lengths = []
+        dialog_lengths = []
+        speakers = []
+        labels = []
+        for data_i in data:
+            feats.extend(data_i[0])
+            frames_lengths.extend(data_i[1])
+            dialog_lengths.append(data_i[2])
+            speakers.append(data_i[3])
+            labels.extend(data_i[4])
+        return {"frames_inputs": pad_sequence(feats, True), 
+                "frames_lengths":torch.LongTensor(frames_lengths), 
+                "dialog_lengths":torch.LongTensor(dialog_lengths), 
+                "speakers":speakers, 
                 "labels":torch.LongTensor(labels)} 
   
 class IEMOCAP5531CrossValWithFrameIntra(Dataset):
+    data = None
     def __init__(self, 
                  split="train", 
                  cross_val=5, 
                  data_path = 'data/myIemocap_4_5531/audio.pkl',
+                 random_valid = None,
                  **kwards):
         feature_path = data_path
-        data = pickle.load(open(feature_path, 'rb'), encoding='latin1')
+        # data = pickle.load(open(feature_path, 'rb'), encoding='latin1')
+        data = IEMOCAP5531CrossValWithFrameIntra.data if IEMOCAP5531CrossValWithFrameIntra.data!=None else pickle.load(open(feature_path, 'rb'), encoding='latin1')
+        IEMOCAP5531CrossValWithFrameIntra.data = data
+
+
         # print("load feature from %s"%feature_path)
         diaFeatures, dialabels =  data["features"], data["labels"]
         self.session_ids = data["session_ids"]
@@ -299,7 +356,12 @@ class IEMOCAP5531CrossValWithFrameIntra(Dataset):
                 cross_keys = cross_keys+self.session_ids["Session%d"%i]
         else:
             cross_keys = self.session_ids["Session%d"%cross_val]  
-            
+        if split == "train" and random_valid !=None:
+            random.seed(0)
+            random.shuffle(cross_keys) 
+            train_len = int(len(cross_keys)*(1-random_valid)) 
+            IEMOCAP5531CrossValWithFrameIntra.data["valid"] = cross_keys[train_len:]
+            cross_keys = cross_keys[:train_len]
         self.keys = data.get(split, cross_keys)
 
         self.features = []
@@ -334,9 +396,10 @@ if __name__ == "__main__":
     # dataset = IEMOCAPAudioDatasetsRaw("/home/users/ntu/n2107167/lnespnet/chengqi/ADGCNForEMC/datasets/iemocap_original/audio/IEMOCAP_Audio_4.csv",split="test")
     
     
-    dataset = IEMOCAP5531CrossValWithFrame("train", data_path="data/featuresFromPretrain/wavlm_large_finetune_fold5_with_val_s3prl_full_mean_hidden.pkl")
+    # dataset = IEMOCAP5531CrossValWithFrame("train", data_path="data/featuresFromPretrain/wavlm_large_finetune_fold5_with_val_s3prl_full_mean_hidden.pkl")
+    dataset = MELD("test")
     dataloader = DataLoader(dataset,
-                            batch_size=120,
+                            batch_size=2,
                             collate_fn=dataset.collate_fn,
                             num_workers=0,
                             pin_memory=False)

@@ -1,0 +1,57 @@
+exp_mode: train
+show_tsne: false
+checkpoints:
+  filename: '{epoch}-{val_loss:.5f}-{val_accuracy:.5f}'
+  monitor: val_accuracy
+  save_last: true
+  save_on_train_epoch_end: false
+  save_top_k: 10
+  mode: max
+data_loader:
+  batch_size: 16
+  num_workers: 0
+dataset:
+  # data_path: data/featuresFromPretrain/wavlm_large_finetune_fold5_with_val_s3prl_full_mean_hidden.pkl
+  # cross_val: 5
+  # max_sentences: 120
+  # noValid: false
+  name: IEMOCAP5531CrossValWithFrameIntra
+  data_path: data/featuresFromPretrain/wavlm_large_s3prl_full_mean_hidden.pkl
+  random_valid: 0.2
+  cross_val: 4
+earlystop:
+  monitor: val_accuracy
+  check_on_train_epoch_end: false
+  patience: 10
+  mode: max
+lr_scheduler:
+  active: true
+  type: CosineAnnealingWarmRestarts
+  params: 
+    T_0: 3
+    T_mult: 2
+    eta_min: 0.00001
+model:
+  uttr_input_dim: 1024
+  classes_name:
+  - 'N'
+  - A
+  - S
+  - H
+  dwFormer:
+    FFNdim: 512
+    n_head: 8
+  
+optimizer:
+  learning_rate: 0.0005
+  type: SGD
+  weight_decay: 0.0005
+seed: 100
+trainer:
+  gpus:
+  - 0
+  log_every_n_steps: 1
+  max_epochs: 500
+  accelerator: gpu
+  devices:
+  - 0

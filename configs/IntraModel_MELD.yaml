@@ -1,0 +1,64 @@
+exp_mode: train
+show_tsne: false
+checkpoints:
+  filename: '{epoch}-{val_loss:.5f}-{val_accuracy:.5f}'
+  monitor: val_accuracy
+  save_last: true
+  save_on_train_epoch_end: false
+  save_top_k: 10
+  mode: max
+data_loader:
+  batch_size: 5
+  num_workers: 0
+dataset:
+  name: MELD
+  data_path: data/newFeatures/meld/audio_no_finetune.pkl
+  noValid: false
+earlystop:
+  monitor: val_accuracy
+  check_on_train_epoch_end: false
+  patience: 10
+  mode: max
+lr_scheduler:
+  active: false
+  decay_rate: 0.5
+model:
+  loss_weight:
+    - 0.002487
+    - 0.004808
+    - 0.000796
+    - 0.002899
+    - 0.003559
+    - 0.02
+    - 0.014706
+  classes_name:
+  - joy 
+  - sadness 
+  - neutral 
+  - anger 
+  - surprise 
+  - fear 
+  - disgust
+  adapter:
+    projector_dim: 256
+    select: DeepModel
+    UtteranceLevel:
+      pooling: MeanPooling
+    DeepModel:
+      model_type: CNNSelfAttention
+      hidden_dim: 80
+      kernel_size: 5
+      padding: 2
+      pooling: 5
+      dropout: 0.4
+  uttr_input_dim: 1024
+optimizer:
+  learning_rate: 0.0001
+  type: Adam
+  weight_decay: 0.0
+seed: 100
+trainer:
+  gpus:
+  - 0
+  log_every_n_steps: 1
+  max_epochs: 500

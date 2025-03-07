@@ -368,7 +368,7 @@ class LSTMModel(nn.Module):
 class DialogRNNModel(nn.Module):
 
     def __init__(self, D_m, D_g, D_p, D_e, D_h, D_a=100, n_classes=7, listener_state=False, 
-        context_attention='simple', dropout_rec=0.5, dropout=0.5):
+        context_attention='simple', dropout_rec=0.5, dropout=0.5, **kward):
 
         super(DialogRNNModel, self).__init__()
 
@@ -423,7 +423,8 @@ class DialogRNNModel(nn.Module):
             hidden = F.relu(self.linear(emotions))
         # hidden = F.relu(self.linear(emotions))
         hidden = self.dropout(hidden)
-        log_prob = F.log_softmax(self.smax_fc(hidden), 2) # seq_len, batch, n_classes
+        # log_prob = F.log_softmax(self.smax_fc(hidden), 2) # seq_len, batch, n_classes
+        log_prob = self.smax_fc(hidden) # seq_len, batch, n_classes
         return log_prob, alpha, alpha_f, alpha_b, emotions
 
 
@@ -737,9 +738,9 @@ class GraphNetwork(torch.nn.Module):
         """
         super(GraphNetwork, self).__init__()
         if pyg.__version__ > "1.5.0":
-            self.conv1 = MyRGCNConv(num_features, hidden_size, num_relations, num_bases=30)
+            self.conv1 = MyRGCNConv(num_features, hidden_size, num_relations, num_bases=1000)
         else:
-            self.conv1 = RGCNConv(num_features, hidden_size, num_relations, num_bases=30)
+            self.conv1 = RGCNConv(num_features, hidden_size, num_relations, num_bases=1000)
         self.conv2 = GraphConv(hidden_size, hidden_size)
         self.matchatt = MatchingAttention(num_features+hidden_size, num_features+hidden_size, att_type='general2')
         self.linear   = nn.Linear(num_features+hidden_size, hidden_size)

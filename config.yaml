@@ -9,30 +9,39 @@ checkpoints:
   save_top_k: 10
   mode: min
 data_loader:
-  batch_size: 1
+  batch_size: 2
   num_workers: 0
 dataset:
   # name: IEMOCAP5531CrossValWithoutFinetune
   # name: IEMOCAP5531CrossValRaw
   # name: IEMOCAP5531CrossValWithFrameIntra
-  name: IEMOCAP5531CrossValWithFrame
+  # name: IEMOCAP5531CrossValWithFrame
+  name: MELD
 earlystop:
-  monitor: val_accuracy
+  monitor: val_loss
   check_on_train_epoch_end: false
   patience: 50
-  mode: max
+  mode: min
 lr_scheduler:
   active: false
   decay_rate: 0.5
 model:
   # used_focal_loss: false
   # name: CausalContextModel
+  # name: CausalLocalConcatDiaModel
   # name: CausalDiaModel
   # name: CausalIntraDiaModel
-  name: DiaModel
+  # name: DiaModel
   # name: IntraModel
+  # name: LabelAdaptiveMixupModel
+  # name: CausalLocalConcatDiaModel
   # name: CNNMfcc
+  name: DialogRNN
+  # name: DialogCRN
   # name: DialogGCN
+  # name: DSTModel
+  # name: DWFormerModel
+
   # name: MLPModel
 
 optimizer:

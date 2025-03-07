@@ -27,7 +27,7 @@ class GATForDialog(torch.nn.Module):
         return out, log
 
 class GCNForDialog(torch.nn.Module):
-    def __init__(self, input_size, hidden_size, layers=64, out_size=4, dropout=0.6, **kwards) -> None:
+    def __init__(self, input_size, hidden_size, layers=64, out_size=4, dropout=0.6, residual = True, **kwards) -> None:
         super(GCNForDialog, self).__init__()
         self.gconvs = nn.ModuleList()
         self.gconvs.append(GCNConv(input_size, hidden_size))
@@ -35,6 +35,7 @@ class GCNForDialog(torch.nn.Module):
             self.gconvs.append(GCNConv(hidden_size, hidden_size))
         self.classfier = nn.Linear(hidden_size, out_size)
         self.dropout = nn.Dropout(dropout)
+        self.residual = residual
         self.act = nn.ReLU()
         
     def forward(self, x, edge_index, **kwards):
@@ -43,7 +44,10 @@ class GCNForDialog(torch.nn.Module):
             h = self.dropout(h)
             h = con(h, edge_index)
             h = self.act(h)
-        out = self.classfier(h+x)
+        if self.residual:
+            out = self.classfier(h+x)
+        else:
+            out = self.classfier(h)
         return out, {}
 
 class GCNIIForDialog(torch.nn.Module):
@@ -70,7 +74,7 @@ class GCNIIForDialog(torch.nn.Module):
             h = self.dropout(h)
             h = con(h, h_0, edge_index)
             h = self.act(h)
-        out = self.dropout(h+x)
+        out = self.dropout(h)
         out = self.classfier(out)
         return out,log
 
@@ -115,8 +119,13 @@ def sys_normalized_adjacency(adj):
    
 class GraphConvolution(nn.Module):
 
-    def __init__(self, in_features, out_features, residual=False, variant=False):
+    def __init__(self, in_features, out_features, residual=False, 
+                variant=False, 
+                useAOR=True,
+                useDLR=True):
         super(GraphConvolution, self).__init__() 
+        self.useAOR = useAOR
+        self.useDLR = useDLR
         self.variant = variant
         if self.variant:
             self.in_features = 2*in_features 
@@ -132,18 +141,24 @@ class GraphConvolution(nn.Module):
         stdv = 1. / math.sqrt(self.out_features)
         self.weight.data.uniform_(-stdv, stdv)
 
-    def forward(self, input, adj , h0 , lamda, alpha, l):
-        theta = math.log(lamda/l+1)
+    def forward(self, input, adj , h0 , lamda, s, l):
+        theta = lamda/l
         hi = torch.spmm(adj, input)
         # print(alpha)
-        if self.variant:
+        if not self.useAOR:
+            support = hi
+            r = support
+        elif self.variant:
             support = torch.cat([hi,h0],1)
-            r = (1-alpha)*hi+alpha*h0
+            r = (1-s)*hi+s*h0
         else:
             # support = (1-alpha)*hi+h0
-            support = (1-alpha)*hi+alpha*h0
+            support = (1-s)*hi+s*h0
             r = support
-        output = theta*torch.mm(support, self.weight)+(1-theta)*r
+        if self.useDLR:
+            output = theta*torch.mm(support, self.weight)+(1-theta)*r
+        else: 
+            output = torch.mm(support, self.weight)
         if self.residual:
             output = output+input
         return output
@@ -157,7 +172,10 @@ class ADGCNForDialog(nn.Module):
                 layers, 
                 dropout, 
                 out_size,  
+                useAOR=True,
+                useDLR=True,
                 variant=False,
+                lamda=0.5,
                 **kwards):
         super(ADGCNForDialog, self).__init__()
         if input_size != hidden_size:
@@ -166,13 +184,14 @@ class ADGCNForDialog(nn.Module):
             self.project = None
         self.convs = nn.ModuleList()
         for _ in range(layers):
-            self.convs.append(GraphConvolution(hidden_size, hidden_size, variant=variant))
+            self.convs.append(GraphConvolution(hidden_size, hidden_size,variant=variant, useAOR=useAOR,
+                useDLR=useDLR))
         self.layernorm = nn.LayerNorm(hidden_size)
         self.act_fn = nn.ReLU()
         self.q = nn.Linear(hidden_size, 1, bias = True)
         self.dropout = dropout
         # self.alpha = alpha
-        self.lamda = 0.5
+        self.lamda = lamda
         self.classfier = nn.Linear(hidden_size, out_size)
 
     def forward(self, x, adj, save_log=False, **kwards):
@@ -188,8 +207,8 @@ class ADGCNForDialog(nn.Module):
             if save_log: 
                 log.update({"ADGCNLayer%d"%i:layer_inner})
             layer_inner = F.dropout(layer_inner, self.dropout, training=self.training)
-            alpha = torch.sigmoid(self.q(layer_inner)-1)
-            layer_inner = self.act_fn(con(layer_inner,adj,_layers[0],self.lamda, alpha, i+1))
+            s = torch.sigmoid(self.q(layer_inner)-1)
+            layer_inner = self.act_fn(con(layer_inner,adj,_layers[0],self.lamda, s, i+1))
             layer_inner = self.layernorm(layer_inner)
         if save_log: 
             log.update({"ADGCNLayer%d"%(i+1):layer_inner})

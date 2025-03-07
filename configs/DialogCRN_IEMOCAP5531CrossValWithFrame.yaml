@@ -1,0 +1,69 @@
+exp_mode: train
+show_tsne: false
+checkpoints:
+  filename: '{epoch}-{val_loss:.5f}-{val_accuracy:.5f}'
+  monitor: val_accuracy
+  save_last: true
+  save_on_train_epoch_end: false
+  save_top_k: 10
+  mode: max
+data_loader:
+  batch_size: 2
+  num_workers: 0
+dataset:
+  name: IEMOCAP5531CrossValWithFrame
+  # data_path: data/featuresFromPretrain/wavlm_large_finetune_fold5_with_val_s3prl_full_mean_hidden.pkl
+  data_path: data/featuresFromPretrain/wavlm_large_s3prl_full_mean_hidden.pkl
+  cross_val: 4
+  random_valid: 0.1
+  max_sentences: 120
+  noValid: false
+earlystop:
+  monitor: val_accuracy
+  check_on_train_epoch_end: false
+  patience: 20
+  mode: max
+lr_scheduler:
+  active: false
+  decay_rate: 0.9
+model:
+  adapter:
+    projector_dim: 512
+    select: DeepModel
+    UtteranceLevel:
+      pooling: MeanPooling
+    DeepModel:
+      model_type: CNNSelfAttention
+      hidden_dim: 256
+      kernel_size: 5
+      padding: 2
+      pooling: 5
+      dropout: 0.4
+    output_dim: 256
+  dialogModel:
+    base_model: LSTM
+    base_layer: 2
+    input_size: None
+    hidden_size: 64
+    n_speakers: 2
+    n_classes: 6
+    dropout: 0.2
+    cuda_flag: True
+    reason_steps: [3, 0]
+  uttr_input_dim: 1024
+  classes_name:
+  - 'N'
+  - A
+  - S
+  - H
+optimizer:
+  learning_rate: 0.0001
+  type: Adam
+  weight_decay: 1.0e-05
+seed: 100
+trainer:
+  log_every_n_steps: 1
+  max_epochs: 500
+  accelerator: gpu
+  devices:
+  - 0

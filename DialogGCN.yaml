@@ -2,10 +2,8 @@ model:
   adapter: 
     projector_dim: 512
     select: DeepModel # 可选: UtteranceLevel 和 DeepModel
-
     UtteranceLevel:
       pooling: MeanPooling
-
     DeepModel:
       model_type: CNNSelfAttention
       hidden_dim: 256

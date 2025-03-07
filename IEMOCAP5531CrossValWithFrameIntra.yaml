@@ -12,11 +12,11 @@ dataset:
   # data_path: data/featuresFromPretrain/wav2vec2_base_960_finetune_fold5_s3prl_full_mean_hidden.pkl
   # data_path: data/featuresFromPretrain/hubert_large_ll60k_finetune_fold5_s3prl_full_mean_hidden.pkl
   # data_path: data/featuresFromPretrain/wavlm_large_finetune_fold5_s3prl_full_mean_hidden.pkl
-  # data_path: data/featuresFromPretrain/wavlm_large_finetune_fold1_with_val_s3prl_full_mean_hidden.pkl
+  data_path: data/featuresFromPretrain/wavlm_large_finetune_fold1_with_val_s3prl_full_mean_hidden.pkl
   # data_path: data/featuresFromPretrain/wavlm_large_finetune_fold5_with_val_s3prl_full_mean_hidden.pkl
-  data_path: data/featuresFromPapers/IEMOCAP_refine.pkl
-  cross_val: 2
+  # data_path: data/featuresFromPapers/IEMOCAP_refine.pkl
+  cross_val: 1
 model:
-  uttr_input_dim: 606
-  input_size: [606, 39]
+  uttr_input_dim: 1024
+  # input_size: [606, 39]
   classes_name: ['N', 'A', 'S', 'H']

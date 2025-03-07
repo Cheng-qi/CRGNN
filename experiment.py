@@ -13,8 +13,8 @@ from torch.utils.data import  random_split
 
 from omegaconf import DictConfig, OmegaConf
 from pytorch_lightning import LightningModule
-from torch.optim import Adamax, Adadelta, Adam, RMSprop
-from torch.optim.lr_scheduler import ExponentialLR
+from torch.optim import Adamax, Adadelta, Adam, RMSprop, SGD
+from torch.optim.lr_scheduler import *
 # from torch.optim.rmsprop import RMSprop
 from torch.utils.data import DataLoader
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
@@ -74,7 +74,7 @@ class Experiment(LightningModule, ABC):
     def prepare_data(self):
         Datasets = getattr(myDatasets, self.cfg.dataset.name)
         self.train_dataset = Datasets("train", **self.cfg.dataset)
-        self.val_dataset = Datasets("valid", **self.cfg.dataset)
+        self.val_dataset = Datasets("test" if self.cfg.dataset.get("noValid", False) else "valid", **self.cfg.dataset)
         self.test_dataset = Datasets("test", **self.cfg.dataset)
 
     def configure_optimizers(self):
@@ -98,14 +98,27 @@ class Experiment(LightningModule, ABC):
                              lr=lr,
                             #  eps=eps,
                              weight_decay=weight_decay)
+        elif self.cfg.optimizer.type.lower() == "sgd":
+            optimizer = SGD(params,
+                             lr=lr,
+                            #  eps=eps,
+                             momentum = self.cfg.optimizer.get("momentum", 0),
+                             weight_decay=weight_decay)
         else:
             raise ValueError("Unknown optimizer type.")
 
 
         if not self.cfg.lr_scheduler.active:
             return optimizer
-        scheduler = ExponentialLR(optimizer=optimizer,
-                                  gamma=self.cfg.lr_scheduler.decay_rate)
+        scheduler = eval(self.cfg.lr_scheduler.get("type", "ExponentialLR"))(
+            optimizer,
+            **self.cfg.lr_scheduler.get("params",
+                                        {
+                                            "gamma":self.cfg.lr_scheduler.decay_rate
+                                         })
+        )
+        # scheduler = ExponentialLR(optimizer=optimizer,
+        #                           gamma=self.cfg.lr_scheduler.decay_rate)
 
         return [optimizer], [scheduler]
 
@@ -169,30 +182,49 @@ class Experiment(LightningModule, ABC):
         )
         # log = self.metric(out, labels)
         log = {}
-        if type(out)==type([]):
+        self.use_causal = False
+        if type(out)==type([]) and len(out) > 3:
+            self.use_causal = True
             log["out"] = out[0] 
             log["out1"] = out[1] 
             log["out2"] = out[2] 
             log["out3"] = out[3] 
+        elif type(out)==type([]):
+            log["out"] = out[0]
         else:
             log["out"] = out
-
+            
         log["labels"] = labels
         log["loss"] = loss
+        log["shiftIndexes"] = torch.LongTensor(self.shiftByDialog(batch))
+        log["shiftIndexesSpe"] = torch.LongTensor(self.shiftBySpeaker(batch))
         # self.log
         if self.cfg.get("show_tsne", False):
             log.update(res)
+
         return log
 
     def validation_epoch_end(self, outputs):
         aggra_out = torch.cat([x["out"] for x in outputs])
-        if( "out1" in outputs[0]):
+        if self.use_causal:
+            aggra_out_o = torch.cat([x["out1"] for x in outputs])
             aggra_out_c = torch.cat([x["out2"] for x in outputs])
             aggra_out_co = torch.cat([x["out3"] for x in outputs])
 
             
         aggra_labels = torch.cat([x["labels"] for x in outputs])
         val_loss = torch.stack([x["loss"] for x in outputs]).mean().data
+
+        shift_labels = torch.cat([x["labels"][x["shiftIndexes"]] for x in outputs])
+        shift_outs = torch.cat([x["out"][x["shiftIndexes"]] for x in outputs])
+
+        shift_labelsSpe = torch.cat([x["labels"][x["shiftIndexesSpe"]] for x in outputs])
+        shift_outsSpe = torch.cat([x["out"][x["shiftIndexesSpe"]] for x in outputs])
+
+        shift_logSpe = accuracy_score(shift_outsSpe.data.cpu().numpy().argmax(-1), shift_labelsSpe.cpu().numpy())
+        shift_log = accuracy_score(shift_outs.data.cpu().numpy().argmax(-1), shift_labels.cpu().numpy())
+        
+
 
         # val_loss = self.loss(aggra_out, aggra_labels, self.cfg.dataset.get("train_mode", "classification"))
         log = self.metric(aggra_out, aggra_labels)
@@ -217,15 +249,20 @@ class Experiment(LightningModule, ABC):
             
             self.log("val_loss", float(val_loss), on_epoch=True, on_step =False)
             self.log("val_accuracy", float(log["accuracy"]), on_epoch=True, on_step =False)
+
             # self.log_dict({k:v for k, v in log.items() if not isinstance(v, str)})
             if self.my_logger != None:
                 self.my_logger.info("epoch%d:val_wacc=%.4f, val_uacc=%.4f, val_single_acc=%s val_f1-macro=%.4f, val_f1-micro=%.4f,val_f1-weighted=%.4f, val_loss=%.4f;"%(self.current_epoch,log["accuracy"],  log["unweight_accuracy"],log["single_accuracy"],log["f1_macro"], log["f1_micro"],log["f1_weighted"], float(val_loss)))
-                if( "out1" in outputs[0]):
+                if self.use_causal:
                     self.my_logger.info(f"val_acc_c={accuracy_score(aggra_labels.data.cpu(), aggra_out_c.data.cpu().numpy().argmax(-1))}")
+                    self.my_logger.info(f"val_acc_o={accuracy_score(aggra_labels.data.cpu(), aggra_out_o.data.cpu().numpy().argmax(-1))}")
                     self.my_logger.info(f"val_acc_co={accuracy_score(aggra_labels.data.cpu(), aggra_out_co.data.cpu().numpy().argmax(-1))}")
                 c_m_nor = confusion_matrix(aggra_labels.data.cpu().numpy(), aggra_out.data.cpu().argmax(-1).numpy(), normalize="true")
                 c_m_nor_str = str(c_m_nor.round(4).tolist()).replace("], [", "; ")
                 self.my_logger.info(f"epoch{self.current_epoch}:{c_m_nor_str}")
+                if self.cfg.dataset.noValid:
+                    self.my_logger.info(f"dia | {(1-shift_log)*len(shift_labels)} | {len(shift_labels)} | {1-shift_log} |")
+                    self.my_logger.info(f"Spe | {(1-shift_logSpe)*len(shift_labelsSpe)} | {len(shift_labelsSpe)} | {1-shift_logSpe} |")
         else:
             self.log("val_loss", float(val_loss), on_epoch=True, on_step =False)
             # self.log("val_accuracy", float(list(log.values())[0]), on_epoch=True, on_step =False)
@@ -233,6 +270,7 @@ class Experiment(LightningModule, ABC):
             if self.my_logger != None:
                 log.update(cur_epoch=self.current_epoch)
                 self.my_logger.info("valid:epoch={cur_epoch}, MAE={MAE}, Corr={Corr}, Acc-2={Has0_acc_2}/{Non0_acc_2}, F1-Score={Has0_F1_score}/{Non0_F1_score}, Mult_acc_5={Mult_acc_5}, Mult_acc_7={Mult_acc_7};".format(**log))
+
 
 
     def test_step(self, batch, batch_idx):
@@ -252,6 +290,8 @@ class Experiment(LightningModule, ABC):
             log["out"] = out
         log["labels"] = labels
         log["loss"] = loss
+        log["shiftIndexes"] = torch.LongTensor(self.shiftByDialog(batch))
+        log["shiftIndexesSpe"] = torch.LongTensor(self.shiftBySpeaker(batch))
         if self.cfg.get("show_tsne", False):
             log.update(res)
         return log
@@ -259,6 +299,15 @@ class Experiment(LightningModule, ABC):
         aggra_out = torch.cat([x["out"] for x in outputs])
         aggra_labels = torch.cat([x["labels"] for x in outputs])
         test_loss = torch.stack([x["loss"] for x in outputs]).mean().data
+
+        shift_labels = torch.cat([x["labels"][x["shiftIndexes"]] for x in outputs])
+        shift_outs = torch.cat([x["out"][x["shiftIndexes"]] for x in outputs])
+
+        shift_labelsSpe = torch.cat([x["labels"][x["shiftIndexesSpe"]] for x in outputs])
+        shift_outsSpe = torch.cat([x["out"][x["shiftIndexesSpe"]] for x in outputs])
+
+        shift_logSpe = accuracy_score(shift_outsSpe.data.cpu().numpy().argmax(-1), shift_labelsSpe.cpu().numpy())
+        shift_log = accuracy_score(shift_outs.data.cpu().numpy().argmax(-1), shift_labels.cpu().numpy())
 
         # test_loss = self.loss(aggra_out, aggra_labels, self.cfg.dataset.get("train_mode", "classification"))
         log = self.metric(aggra_out, aggra_labels)
@@ -289,6 +338,9 @@ class Experiment(LightningModule, ABC):
                 c_m_nor = confusion_matrix(aggra_labels.data.cpu().numpy(), aggra_out.data.cpu().argmax(-1).numpy(), normalize="true")
                 c_m_nor_str = str(c_m_nor.round(4).tolist()).replace("], [", "; ")
                 self.my_logger.info(f"epoch{self.current_epoch}:{c_m_nor_str}")
+                
+                self.my_logger.info(f"dia | {(1-shift_log)*len(shift_labels)} | {len(shift_labels)} | {1-shift_log} |")
+                self.my_logger.info(f"Spe | {(1-shift_logSpe)*len(shift_labelsSpe)} | {len(shift_labelsSpe)} | {1-shift_logSpe} |")
         else:
             self.log("test_loss", float(test_loss), on_epoch=True, on_step =False)
             # self.log("test_accuracy", float(list(log.values())[0]), on_epoch=True, on_step =False)
@@ -296,7 +348,26 @@ class Experiment(LightningModule, ABC):
             if self.my_logger != None:
                 log.update(cur_epoch=self.current_epoch)
                 self.my_logger.info("test:epoch={cur_epoch}, MAE={MAE}, Corr={Corr}, Acc-2={Has0_acc_2}/{Non0_acc_2}, F1-Score={Has0_F1_score}/{Non0_F1_score}, Mult_acc_5={Mult_acc_5}, Mult_acc_7={Mult_acc_7};".format(**log))
-
+    def shiftByDialog(self, batch):
+        shiftIndexes = []
+        for dia_i in range(len(batch["dialog_lengths"])):
+            last_label = -1
+            for index, label in enumerate(batch["labels"][sum(batch["dialog_lengths"][:dia_i]):sum(batch["dialog_lengths"][:(dia_i+1)])]):
+                if last_label != -1 and label != last_label:
+                    shiftIndexes.append(index + sum(batch["dialog_lengths"][:dia_i]))
+                last_label = label
+        return list(map(int, shiftIndexes))
+    
+    def shiftBySpeaker(self, batch):
+        shiftIndexes = []
+        for dia_i in range(len(batch["dialog_lengths"])):
+            # last_label = -1
+            speakers_last_label = {}
+            for index, label in enumerate(batch["labels"][sum(batch["dialog_lengths"][:dia_i]):sum(batch["dialog_lengths"][:(dia_i+1)])]):
+                if batch["speakers"][dia_i][index] in speakers_last_label.keys() and label.item() != speakers_last_label[batch["speakers"][dia_i][index]]:
+                    shiftIndexes.append(index + sum(batch["dialog_lengths"][:dia_i]))
+                speakers_last_label[batch["speakers"][dia_i][index]] = label.item()
+        return list(map(int, shiftIndexes))
 def train(cfg):
     experiment = Experiment(cfg)
     checkpoint_callback = ModelCheckpoint(**cfg.checkpoints)
@@ -317,8 +388,10 @@ def torch_seed(seed):
     np.random.seed(seed)  # Numpy module.
     random.seed(seed)  # Python random module.
     torch.manual_seed(seed)
+    # torch.seed(seed)
     torch.backends.cudnn.benchmark = False
     torch.backends.cudnn.deterministic = True
+    torch.set_float32_matmul_precision("hightest")
 
 
 
@@ -341,6 +414,6 @@ if __name__=="__main__":
         sub_config = OmegaConf.load(sub_config_path)
         cfg = OmegaConf.merge(cfg, sub_config)
     seed_everything(cfg.seed)
-    pyg.seed_everything(cfg.seed)
-    torch_seed(cfg.seed)
+    # pyg.seed_everything(cfg.seed)
+    # torch_seed(cfg.seed)
     train(cfg)
