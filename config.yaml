@@ -9,14 +9,14 @@ checkpoints:
   save_top_k: 10
   mode: min
 data_loader:
-  batch_size: 2
+  batch_size: 5
   num_workers: 0
 dataset:
   # name: IEMOCAP5531CrossValWithoutFinetune
   # name: IEMOCAP5531CrossValRaw
   # name: IEMOCAP5531CrossValWithFrameIntra
   # name: IEMOCAP5531CrossValWithFrame
-  name: MELD
+  name: IEMOCAP
 earlystop:
   monitor: val_loss
   check_on_train_epoch_end: false
@@ -36,7 +36,8 @@ model:
   # name: LabelAdaptiveMixupModel
   # name: CausalLocalConcatDiaModel
   # name: CNNMfcc
-  name: DialogRNN
+  # name: DialogRNN
+  name: CRGNN
   # name: DialogCRN
   # name: DialogGCN
   # name: DSTModel

@@ -4,15 +4,12 @@ from torch import nn, no_grad
 from sklearn.metrics import f1_score, confusion_matrix, accuracy_score, classification_report, precision_recall_fscore_support
 # from src.ADGCN import ADGCNForDialog
 import torchvision
-import src.CausalGCN as causalGNNs
+import src.CausalGAT as causalGNNs
 import src.dialogModels as dialogModels
 from src.dialogModels import *
 import numpy as np
 from src.emotionFroms3pl import *
 from src.tfcnn import *
-from src.dialogGCN import DialogueGCNModel
-from src.dialogGCN import DialogRNNModel
-from src.dialogCRN import DialogueCRN as DialogueCRNModel
 from src.dst.dst import DST
 from src.DWFormer.model import DWFormer
 # from src.LabelAdaptiveMixup.model import SpeechModel as labelAdaptiveMixup
@@ -107,8 +104,6 @@ def build_context_graph(
     return torch.LongTensor(node_indexes).to(device), edges_list.to(torch.long).to(device),  torch.LongTensor(batches).to(device) ,  torch.LongTensor(key_points).to(device)
         # [batches.extend(len(context)*[batch_start+i]) for i, context in enumerate(indexes_group)]
     
-from transformers import AutoModel
-
 class DiaModel(MyModel):
     def __init__(self, cfg, **kwards):
         super().__init__()
@@ -135,105 +130,6 @@ class DiaModel(MyModel):
         x, log = self.dialogModel(uttr_input, graph_adj)
         res.update(log)
         return x, res
-    
-class DialogGCN(MyModel):
-    def __init__(self, cfg, **kwards):
-        super().__init__()
-        self.cfg = cfg
-        self.cfg.dialogModel["D_m"] = cfg.uttr_input_dim
-        self.cfg.dialogModel["n_classes"] = len(cfg.classes_name)
-        if cfg.get("adapter", None) != None:
-            self.adapter = AdapterModel(input_dim = cfg.uttr_input_dim, **cfg.adapter)
-        self.cfg.dialogModel["D_m"] = self.cfg.adapter.output_dim
-        self.dialogGCN = DialogueGCNModel(**self.cfg.dialogModel)
-
-    
-    def forward(self,  frames_inputs=None, frames_lengths=None, uttr_input=None, dialog_lengths=None, speakers = None, **kwards):
-        res = {}
-        # extract features
-        if self.cfg.get("adapter", None) != None:
-            uttr_input, _= self.adapter(frames_inputs, frames_lengths)
-        
-        rnn_inputs = torch.split(uttr_input, dialog_lengths.tolist())
-        U = pad_sequence(rnn_inputs)
-        with no_grad():
-            speakers_con = [F.one_hot(torch.FloatTensor(speakers_i).to(int).to(U.device), self.cfg.dialogModel.n_speakers)
-                        for speakers_i in speakers]  
-            qmask = pad_sequence(speakers_con)
-            umask = torch.zeros([qmask.shape[1], qmask.shape[0]]).to(uttr_input.device)
-            for i,dialog_length in enumerate(dialog_lengths): 
-                
-                umask[i, :dialog_length] = 1
-        
-        log_prob, e_i, e_n, e_t, e_l = self.dialogGCN(U, qmask, umask, dialog_lengths.tolist())
-        res.update(e_i=e_i, e_n=e_n, e_t=e_t, e_l=e_l)
-        return log_prob, res
-    
-class DialogRNN(MyModel):
-    def __init__(self, cfg, **kwards):
-        super().__init__()
-        self.cfg = cfg
-        self.cfg.dialogModel["D_m"] = cfg.uttr_input_dim
-        self.cfg.dialogModel["n_classes"] = len(cfg.classes_name)
-        if cfg.get("adapter", None) != None:
-            self.adapter = AdapterModel(input_dim = cfg.uttr_input_dim, **cfg.adapter)
-        self.cfg.dialogModel["D_m"] = self.cfg.adapter.output_dim
-        self.dialogRNN = DialogRNNModel(**self.cfg.dialogModel)
-
-    
-    def forward(self,  frames_inputs=None, frames_lengths=None, uttr_input=None, dialog_lengths=None, speakers = None, **kwards):
-        res = {}
-        # extract features
-        if self.cfg.get("adapter", None) != None:
-            uttr_input, _= self.adapter(frames_inputs, frames_lengths)
-        
-        rnn_inputs = torch.split(uttr_input, dialog_lengths.tolist())
-        U = pad_sequence(rnn_inputs)
-        with no_grad():
-            speakers_con = [F.one_hot(torch.FloatTensor(speakers_i).to(int).to(U.device), self.cfg.dialogModel.n_speakers)
-                        for speakers_i in speakers]  
-            qmask = pad_sequence(speakers_con)
-            umask = torch.zeros([qmask.shape[1], qmask.shape[0]]).to(uttr_input.device)
-            for i,dialog_length in enumerate(dialog_lengths): 
-                
-                umask[i, :dialog_length] = 1
-        
-        log_prob, e_i, e_n, e_t, e_l = self.dialogRNN(U, qmask, umask, dialog_lengths.tolist())
-        out = []
-        for i, dialog_length_i in enumerate(dialog_lengths):
-            out.append(log_prob[:dialog_length_i,i,:])
-        log_prob = torch.cat(out)
-        # res.update(e_i=e_i, e_n=e_n, e_t=e_t, e_l=e_l)
-        return log_prob, res
-    
-class DialogCRN(MyModel):
-    def __init__(self, cfg, **kwards):
-        super().__init__()
-        self.cfg = cfg
-        self.cfg.dialogModel["input_size"] = cfg.uttr_input_dim
-        self.cfg.dialogModel["n_classes"] = len(cfg.classes_name)
-        if cfg.get("adapter", None) != None:
-            self.adapter = AdapterModel(input_dim = cfg.uttr_input_dim, **cfg.adapter)
-            self.cfg.dialogModel["input_size"] = self.cfg.adapter.output_dim
-        self.dialogCRN = DialogueCRNModel(**self.cfg.dialogModel)
-
-    def forward(self,  frames_inputs=None, frames_lengths=None, uttr_input=None, dialog_lengths=None, speakers = None, **kwards):
-        res = {}
-        # extract features
-        if self.cfg.get("adapter", None) != None:
-            uttr_input, _= self.adapter(frames_inputs, frames_lengths)
-        
-        rnn_inputs = torch.split(uttr_input, dialog_lengths.tolist())
-        U = pad_sequence(rnn_inputs)
-        with no_grad():
-            speakers_con = [F.one_hot(torch.FloatTensor(speakers_i).to(int).to(U.device), self.cfg.dialogModel.n_speakers)
-                        for speakers_i in speakers]
-            qmask = pad_sequence(speakers_con)
-
-        log_prob = self.dialogCRN(U, qmask, dialog_lengths.tolist())
-
-        # res.update(e_i=e_i, e_n=e_n, e_t=e_t, e_l=e_l)
-        return log_prob, res
 
 class CausalIntraDiaModel(MyModel):
     def __init__(self, cfg) -> None:
@@ -258,8 +154,6 @@ class CausalIntraDiaModel(MyModel):
                 nn.Linear(causalGNN_input_dim, cfg.causalGNN.args.hidden),
                 nn.ReLU()
             )
-            
-            
         # dialog model
         self.dialogModel = \
             getattr(dialogModels, 
@@ -306,7 +200,7 @@ class CausalIntraDiaModel(MyModel):
         loss = dialog_loss + self.cfg.causalGNN.args.c * c_loss + self.cfg.causalGNN.args.o * o_loss + self.cfg.causalGNN.args.co * co_loss
         return loss 
 
-class CausalDiaModel(MyModel):
+class CRGNN(MyModel):
     def __init__(self, cfg) -> None:
         super().__init__()
         # cal model
@@ -345,31 +239,31 @@ class CausalDiaModel(MyModel):
         # build local context graph
         node_indexes, edges_list, batches, keypoints = build_context_graph(dialog_lengths, context_before=self.cfg.causalGNN.context_before, context_after=self.cfg.causalGNN.context_after, device=uttr_input.device)
         
-        xc, xo, xco, represent = self.causalGNN(uttr_input[node_indexes], edges_list, batches, keypoints)
+        xc, xo, represent = self.causalGNN(uttr_input[node_indexes], edges_list, batches, keypoints)
         graph_adj = build_intra_graph(dialog_lengths, 
             to_future_link=self.cfg.dialogModel.to_future_link, 
             to_past_link=self.cfg.dialogModel.to_past_link, 
             device = uttr_input.device)
-        if epoch > self.cfg.get("freeze_epoch", 1e6):
-            xo = xo.detach()
-            xc = xo.detach()
-            xco = xo.detach()
-            represent = represent.detach()
+        # if epoch > self.cfg.get("freeze_epoch", 1e6):
+        #     xo = xo.detach()
+        #     xc = xc.detach()
+        #     represent = represent.detach()
         if self.cfg.get("residual", True):
             represent = represent + self.residual(uttr_input)
         x, res = self.dialogModel(represent, graph_adj)
         log.update(res)
 
             # , xc, xco
-        return [x, xo, xc, xco], log
+        return [x, xo, xc], log
     def loss(self, outputs, labels, **kward):
-        dia_out, o_logs, c_logs, co_logs = outputs
+        dia_out, o_logs, c_logs = outputs
         uniform_target = torch.ones_like(c_logs, dtype=torch.float).to(labels.device) / len(self.cfg.classes_name)
         o_loss = super().loss(o_logs, labels)
         c_loss = F.kl_div(F.softmax(c_logs, -1), uniform_target, reduction='batchmean')
-        co_loss = super().loss(co_logs, labels)
+        # co_loss = super().loss(co_logs, labels)
         dialog_loss = super().loss(dia_out, labels)
-        loss = dialog_loss + self.cfg.causalGNN.args.c * c_loss + self.cfg.causalGNN.args.o * o_loss + self.cfg.causalGNN.args.co * co_loss
+        loss = dialog_loss + self.cfg.causalGNN.args.c * c_loss + self.cfg.causalGNN.args.o * o_loss 
+        # + self.cfg.causalGNN.args.co * co_loss
         return loss  
     
 # class CoAttention(nn.Module):

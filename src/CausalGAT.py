@@ -154,8 +154,8 @@ class CausalGAT(torch.nn.Module):
             xo_logis = self.objects_readout_layer(torch.cat([xo, keypoints_feats], -1))
         else:
             xo_logis = self.objects_readout_layer(xo, keypoints_feats)
-        xco_logis = self.random_readout_layer(xc, xo, eval_random=eval_random)
-        return xc_logis, xo_logis, xco_logis, xo
+        # xco_logis = self.random_readout_layer(xc, xo, eval_random=eval_random)
+        return xc_logis, xo_logis, xo
 
     def context_readout_layer(self, x):
         

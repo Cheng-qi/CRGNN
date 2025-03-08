@@ -165,7 +165,7 @@ class GraphConvolution(nn.Module):
 
 
 
-class ADGCNForDialog(nn.Module):
+class ResidualGCN(nn.Module):
     def __init__(self, 
                 input_size, 
                 hidden_size,  
@@ -177,7 +177,7 @@ class ADGCNForDialog(nn.Module):
                 variant=False,
                 lamda=0.5,
                 **kwards):
-        super(ADGCNForDialog, self).__init__()
+        super(ResidualGCN, self).__init__()
         if input_size != hidden_size:
             self.project = nn.Linear(input_size, hidden_size)
         else:

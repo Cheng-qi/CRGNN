@@ -1,0 +1,91 @@
+exp_mode: train
+show_tsne: false
+checkpoints:
+  filename: '{epoch}-{val_loss:.5f}-{val_accuracy:.5f}'
+  monitor: val_accuracy
+  save_last: true
+  save_on_train_epoch_end: false
+  save_top_k: 10
+  mode: max
+data_loader:
+  batch_size: 2
+  num_workers: 0
+dataset:
+  name: IEMOCAP5531CrossValWithFrame
+  data_path: data/featuresFromPretrain/wavlm_large_finetune_fold5_with_val_s3prl_full_mean_hidden.pkl
+  cross_val: 5
+  max_sentences: 120
+  noValid: true
+earlystop:
+  monitor: val_accuracy
+  check_on_train_epoch_end: false
+  patience: 20
+  mode: max
+lr_scheduler:
+  active: false
+  decay_rate: 0.9
+model:
+  name: CRGNN
+  freeze_epoch: 1000000
+  adapter:
+    projector_dim: 256
+    select: DeepModel
+    UtteranceLevel:
+      pooling: MeanPooling
+    DeepModel:
+      model_type: CNNSelfAttention
+      hidden_dim: 128
+      kernel_size: 5
+      padding: 2
+      pooling: 5
+      dropout: 0.4
+    output_dim: 128
+  causalGNN:
+    name: CausalGAT
+    gfn: false
+    dropout: 0.3
+    edge_norm: false
+    context_before: 4
+    context_after: 4
+    args:
+      with_keypoints: true
+      use_residual: true
+      layers: 2
+      hidden: 256
+      with_random: true
+      eval_random: false
+      without_node_attention: false
+      without_edge_attention: false
+      fc_num: 222
+      cat_or_add: cat
+      c: 0.25
+      o: 0.5
+      co: 0.25
+  dialogModel:
+    name: ResidualGCN
+    to_future_link: 10
+    to_past_link: 10
+    hidden_size: 128
+    layers: 2
+    dropout: 0.5
+    head_num: 3
+    alpha: 0.1
+    theta: 0.5
+  uttr_input_dim: 1024
+  classes_name:
+  - 'N'
+  - A
+  - S
+  - H
+  residual: true
+optimizer:
+  learning_rate: 0.0001
+  type: Adam
+  weight_decay: 1.0e-05
+seed: 100
+trainer:
+  log_every_n_steps: 1
+  max_epochs: 500
+  accelerator: gpu
+  devices:
+  - 0
