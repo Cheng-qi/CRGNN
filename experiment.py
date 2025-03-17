@@ -253,16 +253,9 @@ class Experiment(LightningModule, ABC):
             # self.log_dict({k:v for k, v in log.items() if not isinstance(v, str)})
             if self.my_logger != None:
                 self.my_logger.info("epoch%d:val_wacc=%.4f, val_uacc=%.4f, val_single_acc=%s val_f1-macro=%.4f, val_f1-micro=%.4f,val_f1-weighted=%.4f, val_loss=%.4f;"%(self.current_epoch,log["accuracy"],  log["unweight_accuracy"],log["single_accuracy"],log["f1_macro"], log["f1_micro"],log["f1_weighted"], float(val_loss)))
-                if self.use_causal:
-                    self.my_logger.info(f"val_acc_c={accuracy_score(aggra_labels.data.cpu(), aggra_out_c.data.cpu().numpy().argmax(-1))}")
-                    self.my_logger.info(f"val_acc_o={accuracy_score(aggra_labels.data.cpu(), aggra_out_o.data.cpu().numpy().argmax(-1))}")
-                    self.my_logger.info(f"val_acc_co={accuracy_score(aggra_labels.data.cpu(), aggra_out_co.data.cpu().numpy().argmax(-1))}")
                 c_m_nor = confusion_matrix(aggra_labels.data.cpu().numpy(), aggra_out.data.cpu().argmax(-1).numpy(), normalize="true")
                 c_m_nor_str = str(c_m_nor.round(4).tolist()).replace("], [", "; ")
                 self.my_logger.info(f"epoch{self.current_epoch}:{c_m_nor_str}")
-                if self.cfg.dataset.noValid:
-                    self.my_logger.info(f"dia | {(1-shift_log)*len(shift_labels)} | {len(shift_labels)} | {1-shift_log} |")
-                    self.my_logger.info(f"Spe | {(1-shift_logSpe)*len(shift_labelsSpe)} | {len(shift_labelsSpe)} | {1-shift_logSpe} |")
         else:
             self.log("val_loss", float(val_loss), on_epoch=True, on_step =False)
             # self.log("val_accuracy", float(list(log.values())[0]), on_epoch=True, on_step =False)

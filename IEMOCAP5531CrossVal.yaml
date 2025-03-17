@@ -1,8 +1,0 @@
-dataset:
-  name: IEMOCAP5531CrossVal
-  data_path: data/iemocap_4_5531_cross_val_audio/cross_val{cross_val}.pkl
-  cross_val: 5
-  max_sentences: 130
-model:
-  uttr_input_dim: 512
-  classes_name: ['N', 'A', 'S', 'H']

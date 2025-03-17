@@ -2,7 +2,6 @@ import torch
 import torch.nn.functional as F
 from torch import nn, no_grad
 from sklearn.metrics import f1_score, confusion_matrix, accuracy_score, classification_report, precision_recall_fscore_support
-# from src.ADGCN import ADGCNForDialog
 import torchvision
 import src.CausalGAT as causalGNNs
 import src.dialogModels as dialogModels
@@ -179,7 +178,7 @@ class CausalIntraDiaModel(MyModel):
         causal_inputs = torch.cat([frames_inputs[i, :length_i] for i,length_i in enumerate(frames_lengths)])
         
         batches = torch.cat([torch.LongTensor([i]*length_i) for i, length_i in enumerate(frames_lengths)], 0).to(frames_inputs.device)
-        xc, xo, xco, represent = self.causalGNN(causal_inputs, edges_list, batches, None)
+        xc, xo, represent = self.causalGNN(causal_inputs, edges_list, batches, None)
         graph_adj = build_intra_graph(dialog_lengths, 
             to_future_link=self.cfg.dialogModel.to_future_link, 
             to_past_link=self.cfg.dialogModel.to_past_link, 
@@ -189,83 +188,16 @@ class CausalIntraDiaModel(MyModel):
         x, res = self.dialogModel(represent, graph_adj)
         log.update(res)
             # , xc, xco
-        return [x, xo, xc, xco], log
+        return [x, xo, xc], log
     def loss(self, outputs, labels, **kward):
         dia_out, o_logs, c_logs, co_logs = outputs
         uniform_target = torch.ones_like(c_logs, dtype=torch.float).to(labels.device) / len(self.cfg.classes_name)
         o_loss = F.cross_entropy(o_logs, labels)
         c_loss = F.kl_div(F.softmax(c_logs, -1), uniform_target, reduction='batchmean')
-        co_loss = F.cross_entropy(co_logs, labels)
         dialog_loss = F.cross_entropy(dia_out, labels)
-        loss = dialog_loss + self.cfg.causalGNN.args.c * c_loss + self.cfg.causalGNN.args.o * o_loss + self.cfg.causalGNN.args.co * co_loss
+        loss = dialog_loss + self.cfg.causalGNN.args.c * c_loss + self.cfg.causalGNN.args.o * o_loss
         return loss 
 
-class CRGNN(MyModel):
-    def __init__(self, cfg) -> None:
-        super().__init__()
-        # cal model
-        self.cfg = cfg
-        causalGNN_input_dim = cfg.uttr_input_dim
-        if cfg.get("adapter", None) != None:
-            self.adapter = AdapterModel(input_dim = cfg.uttr_input_dim, **cfg.adapter) # self-attention
-            causalGNN_input_dim = self.cfg.adapter.output_dim
-        self.causalGNN = \
-            getattr(causalGNNs, 
-                    cfg.causalGNN.name)\
-                        (num_features = causalGNN_input_dim,
-                         num_classes = len(cfg.classes_name), 
-                         **cfg.causalGNN)     # context
-                        
-        if self.cfg.get("residual", True):
-            self.residual = nn.Sequential(
-                nn.Linear(causalGNN_input_dim, cfg.causalGNN.args.hidden),
-                nn.ReLU()
-            )
-            
-            
-        # dialog model
-        self.dialogModel = \
-            getattr(dialogModels, 
-                    cfg.dialogModel.name)\
-                        (
-                            input_size = cfg.causalGNN.args.hidden,
-                            out_size = len(cfg.classes_name),
-                            **cfg.dialogModel)   # adgcn
-        
-    def forward(self, frames_inputs=None, frames_lengths=None, uttr_input=None, dialog_lengths=None, is_eval=False, epoch=0,**kwards):
-        log = {}
-        if self.cfg.get("adapter", None) != None:
-            uttr_input, _= self.adapter(frames_inputs, frames_lengths)
-        # build local context graph
-        node_indexes, edges_list, batches, keypoints = build_context_graph(dialog_lengths, context_before=self.cfg.causalGNN.context_before, context_after=self.cfg.causalGNN.context_after, device=uttr_input.device)
-        
-        xc, xo, represent = self.causalGNN(uttr_input[node_indexes], edges_list, batches, keypoints)
-        graph_adj = build_intra_graph(dialog_lengths, 
-            to_future_link=self.cfg.dialogModel.to_future_link, 
-            to_past_link=self.cfg.dialogModel.to_past_link, 
-            device = uttr_input.device)
-        # if epoch > self.cfg.get("freeze_epoch", 1e6):
-        #     xo = xo.detach()
-        #     xc = xc.detach()
-        #     represent = represent.detach()
-        if self.cfg.get("residual", True):
-            represent = represent + self.residual(uttr_input)
-        x, res = self.dialogModel(represent, graph_adj)
-        log.update(res)
-
-            # , xc, xco
-        return [x, xo, xc], log
-    def loss(self, outputs, labels, **kward):
-        dia_out, o_logs, c_logs = outputs
-        uniform_target = torch.ones_like(c_logs, dtype=torch.float).to(labels.device) / len(self.cfg.classes_name)
-        o_loss = super().loss(o_logs, labels)
-        c_loss = F.kl_div(F.softmax(c_logs, -1), uniform_target, reduction='batchmean')
-        # co_loss = super().loss(co_logs, labels)
-        dialog_loss = super().loss(dia_out, labels)
-        loss = dialog_loss + self.cfg.causalGNN.args.c * c_loss + self.cfg.causalGNN.args.o * o_loss 
-        # + self.cfg.causalGNN.args.co * co_loss
-        return loss  
-    
 # class CoAttention(nn.Module):
 #     def __init__(self, cfg) -> None:
 #         super().__init__()
@@ -357,7 +289,7 @@ class MultiheadAttention(nn.Module):
         pad_x2 = pad_sequence(pad_x2)
         return pad_x1, pad_x2
 
-class CausalLocalConcatDiaModel(MyModel):
+class CRGNN(MyModel):
     def __init__(self, cfg) -> None:
         super().__init__()
         # cal model
@@ -396,7 +328,7 @@ class CausalLocalConcatDiaModel(MyModel):
         # build local context graph
         node_indexes, edges_list, batches, keypoints = build_context_graph(dialog_lengths, context_before=self.cfg.causalGNN.context_before, context_after=self.cfg.causalGNN.context_after, device=uttr_input.device)
         
-        xc, xo, xco, represent = self.causalGNN(uttr_input[node_indexes], edges_list, batches,keypoints)
+        xc, xo, represent = self.causalGNN(uttr_input[node_indexes], edges_list, batches,keypoints)
         graph_adj = build_intra_graph(dialog_lengths, 
             to_future_link=self.cfg.dialogModel.to_future_link, 
             to_past_link=self.cfg.dialogModel.to_past_link, 
@@ -408,15 +340,14 @@ class CausalLocalConcatDiaModel(MyModel):
 
         log.update(res)
             # , xc, xco
-        return [x, xo, xc, xco], log
+        return [x, xo, xc], log
     def loss(self, outputs, labels, **kward):
-        dia_out, o_logs, c_logs, co_logs = outputs
+        dia_out, o_logs, c_logs = outputs
         uniform_target = torch.ones_like(c_logs, dtype=torch.float).to(labels.device) / len(self.cfg.classes_name)
         o_loss = super().loss(o_logs, labels)
         c_loss = F.kl_div(F.softmax(c_logs, -1), uniform_target, reduction='batchmean')
-        co_loss = super().loss(co_logs, labels)
         dialog_loss = super().loss(dia_out, labels)
-        loss = dialog_loss + self.cfg.causalGNN.args.c * c_loss + self.cfg.causalGNN.args.o * o_loss + self.cfg.causalGNN.args.co * co_loss
+        loss = dialog_loss + self.cfg.causalGNN.args.c * c_loss + self.cfg.causalGNN.args.o * o_loss
         return loss  
 
 class CausalContextModel(MyModel):
@@ -605,46 +536,3 @@ class MLPModel(MyModel):
         if uttr_input==None:
             uttr_input  = frames_inputs[:,0,:]
         return self.MLP(uttr_input), {}  
-
-
-              
-
-
-
-if __name__ == "__main__":
-    from myDatasets import IEMOCAPDataset
-    from torch.utils.data import DataLoader
-    my_dataset = IEMOCAPDataset("train", data_path="/home/users/ntu/n2107167/lnespnet/chengqi/ADGCNForEMC/features/IEMOCAP_features/features/f/cross_val5/features/no_train_audio_features.pkl")
-    my_dataset_valid = IEMOCAPDataset("valid", data_path="/home/users/ntu/n2107167/lnespnet/chengqi/ADGCNForEMC/features/IEMOCAP_features/features/f/cross_val5/features/no_train_audio_features.pkl")
-    train_dataloader = DataLoader(my_dataset,
-                            batch_size=10,
-                            sampler=None,
-                            collate_fn=my_dataset.collate_fn,
-                            num_workers=1,
-                            pin_memory=False)
-    valid_dataloader = DataLoader(my_dataset_valid,
-                            batch_size=10,
-                            sampler=None,
-                            collate_fn=my_dataset_valid.collate_fn,
-                            num_workers=1,
-                            pin_memory=False)
-    model = DialogModel()                        
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.01, weight_decay=0.000001)
-    
-    for i in range(200):
-        for data in train_dataloader:
-            optimizer.zero_grad(),
-            out, res = model(**data)
-            loss = model.loss(out, data["label"])
-            loss.backward()
-            optimizer.step()
-        # print("%dth epoch: train loss %4f"%(i, loss))
-        val_out =[]
-        val_label =[]
-        with torch.no_grad():
-            for data in valid_dataloader:
-                out, res = model(**data)
-                val_out.append(out)
-                val_label.append(data["label"])
-            log = model.merits(torch.cat(val_out), torch.cat(val_label))
-        print("%dth epoch: val acc %4f"%(i, log["accuracy"]))
